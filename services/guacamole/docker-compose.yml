@@ -1,0 +1,79 @@
+version: '3.8'
+
+# =============================================================================
+# Apache Guacamole Stack — lab-secure-edge EC2
+# =============================================================================
+# Architecture:
+#   - All containers on dedicated bridge network 'lab-edge-net'
+#   - Guacamole has NO direct port binding to host — only reachable via NPM
+#   - This is intentional: Guacamole is never directly exposed to the internet
+#   - NPM handles SSL termination and reverse proxying
+#
+# Access flow:
+#   Internet → NPM (443 HTTPS) → guacamole (8080 internal) → guacd (4822 internal)
+#                                      ↓ Auth
+#                              AD LDAP (192.168.10.10:389) via IPsec tunnel
+# =============================================================================
+
+networks:
+  lab-edge-net:
+    external: true
+
+services:
+
+  # PostgreSQL — Guacamole configuration database
+  # Stores: connections, users, TOTP secrets, connection groups
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    networks:
+      - lab-edge-net
+    environment:
+      POSTGRES_DB: guacamole_db
+      POSTGRES_USER: guacamole_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./initdb.sql:/docker-entrypoint-initdb.d/initdb.sql:ro
+    restart: unless-stopped
+
+  # guacd — Guacamole proxy daemon
+  # Handles the actual RDP/SSH/VNC protocol connections to target machines
+  guacd:
+    image: guacamole/guacd:latest
+    container_name: guacd
+    networks:
+      - lab-edge-net
+    restart: unless-stopped
+
+  # Guacamole web application
+  # Note: No 'ports' binding — only reachable through lab-edge-net from NPM
+  guacamole:
+    image: guacamole/guacamole:latest
+    container_name: guacamole
+    networks:
+      - lab-edge-net
+    depends_on:
+      - postgres
+      - guacd
+    environment:
+      GUACD_HOSTNAME: guacd
+      GUACD_PORT: 4822
+      # PostgreSQL connection (POSTGRESQL_ prefix required in newer versions)
+      POSTGRESQL_HOSTNAME: postgres
+      POSTGRESQL_PORT: 5432
+      POSTGRESQL_DATABASE: guacamole_db
+      POSTGRESQL_USERNAME: guacamole_user
+      POSTGRESQL_PASSWORD: ${POSTGRES_PASSWORD}
+      # Active Directory LDAP authentication
+      # Traffic flows: Guacamole → IPsec tunnel → DC01 LDAP
+      LDAP_HOSTNAME: 192.168.10.10
+      LDAP_PORT: 389
+      LDAP_USER_BASE_DN: CN=Users,DC=lab,DC=local
+      LDAP_USERNAME_ATTRIBUTE: sAMAccountName
+      # TOTP MFA extension
+      TOTP_ENABLED: "true"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

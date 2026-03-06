@@ -1,0 +1,26 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # centos-vm1 — DMZ node (VLAN 30)
+  - job_name: 'centos-vm1'
+    static_configs:
+      - targets: ['192.168.30.20:9100']
+
+  # centos-vm2 — Services node / monitoring host (VLAN 20)
+  - job_name: 'centos-vm2'
+    static_configs:
+      - targets: ['192.168.20.30:9100']
+
+  # DC01 — Windows Server 2022 (VLAN 10)
+  # Uses windows-exporter (port 9182) instead of node-exporter
+  - job_name: 'windows-dc01'
+    static_configs:
+      - targets: ['192.168.10.10:9182']

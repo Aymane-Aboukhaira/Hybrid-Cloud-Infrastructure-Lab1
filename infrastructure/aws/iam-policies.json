@@ -1,0 +1,48 @@
+{
+  "_comment": "IAM Policies for Hybrid Cloud Infrastructure Lab",
+  "_author": "Aymane Aboukhaira",
+
+  "lab-sg-updater-policy": {
+    "_purpose": "Allows the self-healing EC2 script to read and modify ONLY the lab-secure-edge-sg security group. Cannot modify any other SG.",
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "AllowSGReadAll",
+        "Effect": "Allow",
+        "Action": [
+          "ec2:DescribeSecurityGroups",
+          "ec2:DescribeSecurityGroupRules"
+        ],
+        "Resource": "*"
+      },
+      {
+        "Sid": "AllowSGModifyLabOnly",
+        "Effect": "Allow",
+        "Action": [
+          "ec2:AuthorizeSecurityGroupIngress",
+          "ec2:RevokeSecurityGroupIngress"
+        ],
+        "Resource": "arn:aws:ec2:eu-north-1:197654287376:security-group/sg-04bfe0b62b29ec7fa"
+      }
+    ]
+  },
+
+  "lab-s3-backup-writeonly-policy": {
+    "_purpose": "Write-only S3 access for backup scripts. No delete permission — protects backups from ransomware or compromised credentials.",
+    "_design_note": "Even if EC2 or centos-vm2 is fully compromised and the attacker finds these credentials, they cannot delete backups. S3 versioning ensures previous versions are recoverable.",
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": [
+          "s3:PutObject",
+          "s3:ListBucket"
+        ],
+        "Resource": [
+          "arn:aws:s3:::aymane-lab-backups",
+          "arn:aws:s3:::aymane-lab-backups/*"
+        ]
+      }
+    ]
+  }
+}

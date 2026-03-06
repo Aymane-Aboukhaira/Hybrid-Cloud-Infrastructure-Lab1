@@ -1,0 +1,91 @@
+# Fail2Ban Configuration
+# =============================================================================
+# /etc/fail2ban/jail.local — Lab-Secure-Edge EC2
+# Author: Aymane Aboukhaira
+# =============================================================================
+# Architecture note: This config addresses three challenges specific to a
+# containerized environment:
+#
+# 1. LOG BLINDSPOT: Guacamole logs are trapped inside Docker's json-file driver.
+#    Solution: Read Nginx Proxy Manager access logs instead — NPM logs real
+#    client IPs after unwrapping the X-Forwarded-For header.
+#
+# 2. DOCKER FIREWALL BYPASS: Standard iptables INPUT chain is bypassed by
+#    Docker's routing. Solution: Inject bans into the DOCKER-USER chain, which
+#    Docker respects for pre-routing decisions.
+#
+# 3. ADMIN LOCKOUT: Home IP must be whitelisted — failing to do so will ban
+#    the admin's IP and collapse the IPsec tunnel (pfSense shares same NAT IP).
+# =============================================================================
+
+[INCLUDES]
+before = paths-debian.conf
+
+[DEFAULT]
+# --- Whitelist ---
+# 127.0.0.1 = loopback
+# Home public IP = auto-updated by update-sg-ip.sh when dynamic IP changes
+ignoreip = 127.0.0.1/8 102.100.226.122
+
+# --- Default Ban Policies ---
+bantime  = 1h
+findtime = 10m
+maxretry = 5
+
+# --- Backend Settings ---
+backend = auto
+usedns = warn
+logencoding = auto
+enabled = false
+mode = normal
+filter = %(__name__)s[mode=%(mode)s]
+
+# --- Default Action Settings ---
+destemail = root@localhost
+sender = root@<fq-hostname>
+mta = sendmail
+protocol = tcp
+chain = <known/chain>
+port = 0:65535
+fail2ban_agent = Fail2Ban/%(fail2ban_version)s
+banaction = iptables-multiport
+banaction_allports = iptables-allports
+action = %(action_)s
+
+# --- Jails ---
+
+[sshd]
+# Protects SSH from brute force attacks
+enabled = true
+port    = ssh
+logpath = %(sshd_log)s
+backend = %(sshd_backend)s
+
+[guacamole]
+# Secondary jail reading from syslog for Guacamole auth failures
+enabled = true
+port     = http,https
+logpath  = /var/log/syslog
+backend  = systemd
+
+[npm-docker]
+# PRIMARY jail — reads real client IPs from Nginx Proxy Manager access logs
+# Action injects bans into DOCKER-USER chain (the only chain Docker respects)
+# This catches both credential stuffers (401 errors) and vulnerability scanners (404)
+enabled = true
+filter = npm-general
+logpath = /opt/npm/data/logs/proxy-host-*_access.log
+action = iptables-multiport[name="npm-docker", port="http,https", protocol="tcp", chain="DOCKER-USER"]
+maxretry = 5
+findtime = 10m
+bantime = 1h
+
+[recidive]
+# Persistent offender jail — escalating response
+# Any IP banned 5+ times in 1 day gets a 1-week ban
+# Reads from Fail2ban's own log to detect repeat offenders across all jails
+enabled = true
+logpath  = /var/log/fail2ban.log
+banaction = %(banaction_allports)s
+bantime  = 1w
+findtime = 1d

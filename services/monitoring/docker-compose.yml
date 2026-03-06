@@ -1,0 +1,45 @@
+version: '3.8'
+
+# =============================================================================
+# Monitoring Stack — centos-vm2 (192.168.20.30)
+# =============================================================================
+# Components:
+#   - Prometheus: metrics collection and storage (scrapes all lab nodes)
+#   - Grafana: visualization and dashboards
+#   - node-exporter: host metrics for centos-vm2 itself
+#
+# Deployment: podman-compose (CentOS uses Podman, not Docker)
+# Auto-restart: systemctl enable podman-restart
+# =============================================================================
+
+services:
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"    # Bound to 0.0.0.0 — accessible from all VLANs
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"    # Bound to 0.0.0.0 — accessible from all VLANs
+    volumes:
+      - grafana_data:/var/lib/grafana
+    restart: unless-stopped
+
+  node_exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    ports:
+      - "9100:9100"
+    restart: unless-stopped
+
+volumes:
+  prometheus_data:
+  grafana_data:
